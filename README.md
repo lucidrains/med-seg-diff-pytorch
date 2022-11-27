@@ -2,7 +2,9 @@
 
 ## MedSegDiff - Pytorch (wip)
 
-Implementation of <a href="https://arxiv.org/abs/2211.00611">MedSegDiff</a> in Pytorch - SOTA medical segmentation out of Baidu using DDPM and filtering of features in fourier space
+Implementation of <a href="https://arxiv.org/abs/2211.00611">MedSegDiff</a> in Pytorch - SOTA medical segmentation out of Baidu using DDPM and enhanced conditioning on the feature level, with filtering of features in fourier space.
+
+I will also add attention and introduce an extended type of cross modulation on the attention matrices, alphafold2 style.
 
 ## Appreciation
 
