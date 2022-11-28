@@ -17,12 +17,8 @@ setup(
     'medical segmentation'
   ],
   install_requires=[
-    'accelerate',
     'einops',
-    'ema-pytorch',
-    'pillow',
     'torch',
-    'torchvision',
     'tqdm'
   ],
   classifiers=[
