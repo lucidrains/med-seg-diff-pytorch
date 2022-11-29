@@ -4,8 +4,6 @@
 
 Implementation of <a href="https://arxiv.org/abs/2211.00611">MedSegDiff</a> in Pytorch - SOTA medical segmentation out of Baidu using DDPM and enhanced conditioning on the feature level, with filtering of features in fourier space.
 
-I will also add attention and introduce an extended type of cross modulation on the attention matrices, alphafold2 style.
-
 ## Install
 
 ```bash
@@ -47,8 +45,6 @@ pred.shape                              # predicted segmented images - (8, 3, 12
 
 ## Todo
 
-- [ ] add a cross attention variant for generating the attentive map (A)
-- [ ] modulate attention matrices in middle and other self attention layers, wherever full attention is used
 - [ ] some basic training code, with Trainer taking in custom dataset tailored for medical image formats
 
 ## Citations

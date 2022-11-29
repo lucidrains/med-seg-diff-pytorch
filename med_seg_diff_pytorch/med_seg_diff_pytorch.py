@@ -196,6 +196,19 @@ class Attention(nn.Module):
         out = rearrange(out, 'b h (x y) d -> b (h d) x y', x = h, y = w)
         return self.to_out(out)
 
+# conditioning class
+
+class FourierConditioning(nn.Module):
+    def __init__(self, dim):
+        super().__init__()
+        self.norm_input = LayerNorm(dim, bias = True)
+        self.norm_condition = LayerNorm(dim, bias = True)
+
+    def forward(self, x, c):
+        normed_x = self.norm_input(x)
+        normed_c = self.norm_condition(c)
+        return (normed_x * normed_c) * c   # eq 3 in paper
+
 # model
 
 class Unet(nn.Module):
@@ -207,7 +220,8 @@ class Unet(nn.Module):
         dim_mults=(1, 2, 4, 8),
         channels = 3,
         self_condition = False,
-        resnet_block_groups = 8
+        resnet_block_groups = 8,
+        conditioning_klass = FourierConditioning
     ):
         super().__init__()
 
@@ -242,6 +256,8 @@ class Unet(nn.Module):
 
         num_resolutions = len(in_out)
 
+        self.conditioners = nn.ModuleList([])
+
         # downsampling encoding blocks
 
         self.downs = nn.ModuleList([])
@@ -249,11 +265,12 @@ class Unet(nn.Module):
         for ind, (dim_in, dim_out) in enumerate(in_out):
             is_last = ind >= (num_resolutions - 1)
 
+            self.conditioners.append(conditioning_klass(dim_in))
+
             self.downs.append(nn.ModuleList([
                 block_klass(dim_in, dim_in, time_emb_dim = time_dim),
                 block_klass(dim_in, dim_in, time_emb_dim = time_dim),
                 Residual(LinearAttention(dim_in)),
-                LayerNorm(dim_in, bias = True),
                 Downsample(dim_in, dim_out) if not is_last else nn.Conv2d(dim_in, dim_out, 3, padding = 1)
             ]))
 
@@ -310,7 +327,7 @@ class Unet(nn.Module):
 
         h = []
 
-        for (block1, block2, attn, norm, downsample), (cond_block1, cond_block2, cond_attn, cond_norm, cond_downsample) in zip(self.downs, self.cond_downs):
+        for (block1, block2, attn, downsample), (cond_block1, cond_block2, cond_attn, cond_downsample), conditioner in zip(self.downs, self.cond_downs, self.conditioners):
             x = block1(x, t)
             c = cond_block1(c, t)
 
@@ -322,22 +339,10 @@ class Unet(nn.Module):
             x = attn(x)
             c = cond_attn(c)
 
-            # they create an attentive map A by element-wise multiplication of 
-            # then they use it to modulate it to modulate the condition in fourier space (ff-parse)
-            # eq. 3 in the paper
+            # condition using modulation of fourier frequencies with attentive map
+            # you can test your own conditioners by passing in a different conditioner_klass , if you believe you can best the paper
 
-            A = norm(x) * cond_norm(c) * c
-
-            # fc stands for conditioning in fourier space
-
-            fc = fft2(c)
-
-            fc = fc * A     # eq. 5 in paper
-
-            c = ifft2(fc).real
-            c = c.type(dtype)
-
-            # </conditioning>
+            c = conditioner(x, c)
 
             h.append(x)
 
