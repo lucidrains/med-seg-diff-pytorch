@@ -207,6 +207,8 @@ class Conditioning(nn.Module):
         self.norm_input = LayerNorm(dim, bias = True)
         self.norm_condition = LayerNorm(dim, bias = True)
 
+        self.block = ResnetBlock(dim, dim)
+
     def forward(self, x, c):
 
         # ff-parser in the paper, for modulating out the high frequencies
@@ -221,7 +223,12 @@ class Conditioning(nn.Module):
 
         normed_x = self.norm_input(x)
         normed_c = self.norm_condition(c)
-        return (normed_x * normed_c) * c
+        c = (normed_x * normed_c) * c
+
+        # add an extra block to allow for more integration of information
+        # there is a downsample right after the Condition block (but maybe theres a better place to condition than right before the downsample)
+
+        return self.block(c)
 
 # model
 
