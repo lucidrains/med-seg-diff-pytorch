@@ -9,7 +9,7 @@ from torch import nn, einsum
 import torch.nn.functional as F
 from torch.fft import fft2, ifft2
 
-from einops import rearrange, reduce
+from einops import rearrange, reduce, pack
 from einops.layers.torch import Rearrange
 
 from tqdm.auto import tqdm
@@ -235,7 +235,8 @@ class Unet(nn.Module):
         channels = 3,
         self_condition = False,
         resnet_block_groups = 8,
-        conditioning_klass = Conditioning
+        conditioning_klass = Conditioning,
+        skip_connect_condition_fmaps = False   # whether to concatenate the conditioning fmaps in the latter decoder upsampling portion of unet
     ):
         super().__init__()
 
@@ -273,6 +274,8 @@ class Unet(nn.Module):
         num_resolutions = len(in_out)
 
         self.conditioners = nn.ModuleList([])
+
+        self.skip_connect_condition_fmaps = skip_connect_condition_fmaps
 
         # downsampling encoding blocks
 
@@ -314,9 +317,11 @@ class Unet(nn.Module):
         for ind, (dim_in, dim_out) in enumerate(reversed(in_out)):
             is_last = ind == (len(in_out) - 1)
 
+            skip_connect_dim = dim_in * (2 if self.skip_connect_condition_fmaps else 1)
+
             self.ups.append(nn.ModuleList([
-                block_klass(dim_out + dim_in, dim_out, time_emb_dim = time_dim),
-                block_klass(dim_out + dim_in, dim_out, time_emb_dim = time_dim),
+                block_klass(dim_out + skip_connect_dim, dim_out, time_emb_dim = time_dim),
+                block_klass(dim_out + skip_connect_dim, dim_out, time_emb_dim = time_dim),
                 Residual(LinearAttention(dim_out)),
                 Upsample(dim_out, dim_in) if not is_last else  nn.Conv2d(dim_out, dim_in, 3, padding = 1)
             ]))
@@ -333,7 +338,7 @@ class Unet(nn.Module):
         cond,
         x_self_cond = None
     ):
-        dtype = x.dtype
+        dtype, skip_connect_c = x.dtype, self.skip_connect_condition_fmaps
 
         if self.self_condition:
             x_self_cond = default(x_self_cond, lambda: torch.zeros_like(x))
@@ -352,7 +357,7 @@ class Unet(nn.Module):
             x = block1(x, t)
             c = cond_block1(c, t)
 
-            h.append(x)
+            h.append([x, c] if skip_connect_c else [x])
 
             x = block2(x, t)
             c = cond_block2(c, t)
@@ -365,7 +370,7 @@ class Unet(nn.Module):
 
             c = conditioner(x, c)
 
-            h.append(x)
+            h.append([x, c] if skip_connect_c else [x])
 
             x = downsample(x)
             c = cond_downsample(c)
@@ -379,10 +384,10 @@ class Unet(nn.Module):
         x = self.mid_block2(x, t)
 
         for block1, block2, attn, upsample in self.ups:
-            x = torch.cat((x, h.pop()), dim = 1)
+            x = torch.cat((x, *h.pop()), dim = 1)
             x = block1(x, t)
 
-            x = torch.cat((x, h.pop()), dim = 1)
+            x = torch.cat((x, *h.pop()), dim = 1)
             x = block2(x, t)
             x = attn(x)
 
