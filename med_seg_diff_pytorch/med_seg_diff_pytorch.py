@@ -4,12 +4,14 @@ from random import random
 from functools import partial
 from collections import namedtuple
 
+from beartype import beartype
+
 import torch
 from torch import nn, einsum
 import torch.nn.functional as F
 from torch.fft import fft2, ifft2
 
-from einops import rearrange, reduce, pack
+from einops import rearrange, reduce
 from einops.layers.torch import Rearrange
 
 from tqdm.auto import tqdm
@@ -224,6 +226,7 @@ class Conditioning(nn.Module):
 
 # model
 
+@beartype
 class Unet(nn.Module):
     def __init__(
         self,
@@ -231,8 +234,9 @@ class Unet(nn.Module):
         image_size,
         init_dim = None,
         out_dim = None,
-        dim_mults=(1, 2, 4, 8),
+        dim_mults: tuple = (1, 2, 4, 8),
         channels = 3,
+        full_self_attn: tuple = (False, False, False, True),
         self_condition = False,
         resnet_block_groups = 8,
         conditioning_klass = Conditioning,
@@ -272,6 +276,7 @@ class Unet(nn.Module):
         # layers
 
         num_resolutions = len(in_out)
+        assert len(full_self_attn) == num_resolutions
 
         self.conditioners = nn.ModuleList([])
 
@@ -283,15 +288,17 @@ class Unet(nn.Module):
 
         curr_fmap_size = image_size
 
-        for ind, (dim_in, dim_out) in enumerate(in_out):
+        for ind, ((dim_in, dim_out), full_attn) in enumerate(zip(in_out, full_self_attn)):
             is_last = ind >= (num_resolutions - 1)
+            attn_klass = Attention if full_attn else LinearAttention
 
             self.conditioners.append(conditioning_klass(curr_fmap_size, dim_in))
+
 
             self.downs.append(nn.ModuleList([
                 block_klass(dim_in, dim_in, time_emb_dim = time_dim),
                 block_klass(dim_in, dim_in, time_emb_dim = time_dim),
-                Residual(LinearAttention(dim_in)),
+                Residual(attn_klass(dim_in)),
                 Downsample(dim_in, dim_out) if not is_last else nn.Conv2d(dim_in, dim_out, 3, padding = 1)
             ]))
 
@@ -314,15 +321,16 @@ class Unet(nn.Module):
 
         self.ups = nn.ModuleList([])
 
-        for ind, (dim_in, dim_out) in enumerate(reversed(in_out)):
+        for ind, ((dim_in, dim_out), full_attn) in enumerate(zip(reversed(in_out), reversed(full_self_attn))):
             is_last = ind == (len(in_out) - 1)
+            attn_klass = Attention if full_attn else LinearAttention
 
             skip_connect_dim = dim_in * (2 if self.skip_connect_condition_fmaps else 1)
 
             self.ups.append(nn.ModuleList([
                 block_klass(dim_out + skip_connect_dim, dim_out, time_emb_dim = time_dim),
                 block_klass(dim_out + skip_connect_dim, dim_out, time_emb_dim = time_dim),
-                Residual(LinearAttention(dim_out)),
+                Residual(attn_klass(dim_out)),
                 Upsample(dim_out, dim_in) if not is_last else  nn.Conv2d(dim_out, dim_in, 3, padding = 1)
             ]))
 
