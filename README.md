@@ -18,12 +18,12 @@ from med_seg_diff_pytorch import Unet, MedSegDiff
 
 model = Unet(
     dim = 64,
+    image_size = 128,
     dim_mults = (1, 2, 4, 8)
 )
 
 diffusion = MedSegDiff(
     model,
-    image_size = 128,
     timesteps = 1000
 ).cuda()
 

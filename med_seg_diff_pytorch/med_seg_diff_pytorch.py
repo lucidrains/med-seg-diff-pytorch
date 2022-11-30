@@ -198,16 +198,29 @@ class Attention(nn.Module):
 
 # conditioning class
 
-class FourierConditioning(nn.Module):
-    def __init__(self, dim):
+class Conditioning(nn.Module):
+    def __init__(self, fmap_size, dim):
         super().__init__()
+        self.ff_parser_attn_map = nn.Parameter(torch.ones(dim, fmap_size, fmap_size))
+
         self.norm_input = LayerNorm(dim, bias = True)
         self.norm_condition = LayerNorm(dim, bias = True)
 
     def forward(self, x, c):
+
+        # ff-parser in the paper, for modulating out the high frequencies
+
+        dtype = x.dtype
+        x = fft2(x)
+        x = x * self.ff_parser_attn_map
+        x = ifft2(x).real
+        x = x.type(dtype)
+
+        # eq 3 in paper
+
         normed_x = self.norm_input(x)
         normed_c = self.norm_condition(c)
-        return (normed_x * normed_c) * c   # eq 3 in paper
+        return (normed_x * normed_c) * c
 
 # model
 
@@ -215,15 +228,18 @@ class Unet(nn.Module):
     def __init__(
         self,
         dim,
+        image_size,
         init_dim = None,
         out_dim = None,
         dim_mults=(1, 2, 4, 8),
         channels = 3,
         self_condition = False,
         resnet_block_groups = 8,
-        conditioning_klass = FourierConditioning
+        conditioning_klass = Conditioning
     ):
         super().__init__()
+
+        self.image_size = image_size
 
         # determine dimensions
 
@@ -262,10 +278,12 @@ class Unet(nn.Module):
 
         self.downs = nn.ModuleList([])
 
+        curr_fmap_size = image_size
+
         for ind, (dim_in, dim_out) in enumerate(in_out):
             is_last = ind >= (num_resolutions - 1)
 
-            self.conditioners.append(conditioning_klass(dim_in))
+            self.conditioners.append(conditioning_klass(curr_fmap_size, dim_in))
 
             self.downs.append(nn.ModuleList([
                 block_klass(dim_in, dim_in, time_emb_dim = time_dim),
@@ -273,6 +291,9 @@ class Unet(nn.Module):
                 Residual(LinearAttention(dim_in)),
                 Downsample(dim_in, dim_out) if not is_last else nn.Conv2d(dim_in, dim_out, 3, padding = 1)
             ]))
+
+            if not is_last:
+                curr_fmap_size //= 2
 
         # middle blocks
 
@@ -402,7 +423,6 @@ class MedSegDiff(nn.Module):
         self,
         model,
         *,
-        image_size,
         timesteps = 1000,
         sampling_timesteps = None,
         objective = 'pred_noise',
@@ -415,7 +435,7 @@ class MedSegDiff(nn.Module):
         self.channels = self.model.channels
         self.self_condition = self.model.self_condition
 
-        self.image_size = image_size
+        self.image_size = model.image_size
 
         self.objective = objective
 
