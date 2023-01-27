@@ -1,3 +1,11 @@
+
+# My instructions
+Command to run
+```bash
+$ python3 driver.py --input-channels=4 --image-size=128 --data-dir='./data' --dim=64 --epochs=100 --batch-size=8
+```
+
+
 <img src="./med-seg-diff.png" width="450px"></img>
 
 ## MedSegDiff - Pytorch
