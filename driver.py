@@ -4,15 +4,23 @@ import torch
 from med_seg_diff_pytorch import Unet, MedSegDiff
 from loader_isic import ISICDataset
 import torchvision.transforms as transforms
-
-
-
+from tqdm import tqdm
+import numpy as np
+import PIL
+def numpy_to_pil(img):
+    img = img*255
+    print(img.shape)
+    img = np.transpose(img, (1, 2, 0))[:, :, 0]
+    print(img.shape)
+    img = img.astype(np.uint8)
+    img = PIL.Image.fromarray(img)
+    return img
 
 def main():
     wandb.init(project="med-seg-diff")
     parser = argparse.ArgumentParser()
-    parser.add_argument('-ic', '--input-channels', type=int, default=4, help='input channels for training (default: 4)')
-    parser.add_argument('-c', '--channels', type=int, default=4, help='output channels for training (default: 4)')
+    parser.add_argument('-ic', '--input-channels', type=int, default=1, help='input channels for training (default: 3)')
+    parser.add_argument('-c', '--channels', type=int, default=3, help='output channels for training (default: 3)')
     parser.add_argument('-is', '--image-size', type=int, default=128, help='input image size (default: 128)')
     parser.add_argument('-dd', '--data-dir', default='./data', help='directory of input image')
     parser.add_argument('-d', '--dim', type=int, default=64, help='dim (deaault: 64)')
@@ -51,7 +59,7 @@ def main():
         shuffle=True)
     data = iter(datal)
 
-    for i in range(len(data)):
+    for i in tqdm(range(len(data))):
         img, mask = next(data)
 
 
@@ -69,7 +77,7 @@ def main():
 
         ## TRAIN MODEL ##
         #loss = diffusion(segmented_imgs, input_imgs)
-        loss = diffusion(img, mask)
+        loss = diffusion(mask, img)
         wandb.log({'loss': loss}) # Log loss to wanbd
         loss.backward()
 
@@ -78,7 +86,9 @@ def main():
 
 
     ## INFERENCE ##
-    pred = diffusion.sample(img)
+    pred = diffusion.sample(img).cpu().detach().numpy()
+    pil_img = numpy_to_pil(pred[0])
+    pil_img.save("output.png")
     #pred = diffusion.sample(input_imgs)     # pass in your unsegmented images
     print("Pred: {}".format(pred.shape))
 

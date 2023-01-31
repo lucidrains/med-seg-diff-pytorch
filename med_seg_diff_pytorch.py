@@ -257,6 +257,7 @@ class Unet(nn.Module):
         # determine dimensions
 
         self.channels = channels
+        self.input_channels = input_channels
         self.self_condition = self_condition
         #input_channels = channels * (2 if self_condition else 1)
         print("Channels: {}".format(channels))
@@ -347,7 +348,7 @@ class Unet(nn.Module):
         # projection out to predictions
 
         self.final_res_block = block_klass(dim * 2, dim, time_emb_dim = time_dim)
-        self.final_conv = nn.Conv2d(dim, channels, 1)
+        self.final_conv = nn.Conv2d(dim, input_channels, 1)
 
     def forward(
         self,
@@ -456,6 +457,7 @@ class MedSegDiff(nn.Module):
 
         self.model = model
         self.channels = self.model.channels
+        self.input_channels = self.model.input_channels
         self.self_condition = self.model.self_condition
 
         self.image_size = model.image_size
@@ -653,9 +655,9 @@ class MedSegDiff(nn.Module):
         batch_size, device = cond_img.shape[0], self.device
         cond_img = cond_img.to(self.device)
 
-        image_size, channels = self.image_size, self.channels
+        image_size, input_channels = self.image_size, self.input_channels
         sample_fn = self.p_sample_loop if not self.is_ddim_sampling else self.ddim_sample
-        return sample_fn((batch_size, channels, image_size, image_size), cond_img)
+        return sample_fn((batch_size, input_channels, image_size, image_size), cond_img)
 
     def q_sample(self, x_start, t, noise=None):
         noise = default(noise, lambda: torch.randn_like(x_start))
@@ -684,7 +686,6 @@ class MedSegDiff(nn.Module):
                 x_self_cond.detach_()
 
         # predict and take gradient step
-
         model_out = self.model(x, t, cond, x_self_cond)
 
         if self.objective == 'pred_noise':
@@ -696,7 +697,6 @@ class MedSegDiff(nn.Module):
             target = v
         else:
             raise ValueError(f'unknown objective {self.objective}')
-
         return F.mse_loss(model_out, target)
 
     def forward(self, img, cond_img, *args, **kwargs):
