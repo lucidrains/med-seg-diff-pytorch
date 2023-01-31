@@ -238,10 +238,12 @@ class Unet(nn.Module):
         self,
         dim,
         image_size,
+        input_channels,
+        channels,
         init_dim = None,
         out_dim = None,
         dim_mults: tuple = (1, 2, 4, 8),
-        channels = 3,
+        #channels = 3,
         full_self_attn: tuple = (False, False, False, True),
         self_condition = False,
         resnet_block_groups = 8,
@@ -256,7 +258,9 @@ class Unet(nn.Module):
 
         self.channels = channels
         self.self_condition = self_condition
-        input_channels = channels * (2 if self_condition else 1)
+        #input_channels = channels * (2 if self_condition else 1)
+        print("Channels: {}".format(channels))
+        print("In Channels: {}".format(input_channels))
 
         init_dim = default(init_dim, dim)
 
@@ -572,6 +576,9 @@ class MedSegDiff(nn.Module):
         return ModelPrediction(pred_noise, x_start)
 
     def p_mean_variance(self, x, t, c, x_self_cond = None, clip_denoised = True):
+        print("X: {}".format(x.shape))
+        print("T: {}".format(t.shape))
+        print("C: {}".format(c.shape))
         preds = self.model_predictions(x, t, c, x_self_cond)
         x_start = preds.pred_x_start
 

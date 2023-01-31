@@ -12,6 +12,7 @@ def main():
     wandb.init(project="med-seg-diff")
     parser = argparse.ArgumentParser()
     parser.add_argument('-ic', '--input-channels', type=int, default=4, help='input channels for training (default: 4)')
+    parser.add_argument('-c', '--channels', type=int, default=4, help='output channels for training (default: 4)')
     parser.add_argument('-is', '--image-size', type=int, default=128, help='input image size (default: 128)')
     parser.add_argument('-dd', '--data-dir', default='./data', help='directory of input image')
     parser.add_argument('-d', '--dim', type=int, default=64, help='dim (deaault: 64)')
@@ -26,7 +27,9 @@ def main():
     model = Unet(
         dim = args.dim, #64,
         image_size = args.image_size,
-        dim_mults = (1, 2, 4, 8)
+        dim_mults = (1, 2, 4, 8),
+        input_channels = args.input_channels,
+        channels = args.channels
     )
 
     diffusion = MedSegDiff(
@@ -39,7 +42,7 @@ def main():
     tran_list = [transforms.Resize((args.image_size,args.image_size)), transforms.ToTensor(),]
     transform_train = transforms.Compose(tran_list)
     ds = ISICDataset(args, args.data_dir, transform_train)
-    args.in_ch = 4
+    #args.in_ch = 4
 
 
     datal = torch.utils.data.DataLoader(
@@ -51,18 +54,10 @@ def main():
     for i in range(len(data)):
         img, mask = next(data)
 
-        # Figure out what items is doing
-        try:
-            mask2 = {k: v[i : i+ self.microbatch].cuda() for k,v in mask.items() }
-            print(mask2)
-        except:
-            print("Doesn't work")
 
         ### SETUP DATA ##
         #segmented_imgs = torch.rand(8, 3, 128, 128)  # inputs are normalized from 0 to 1
         #input_imgs = torch.rand(8, 3, 128, 128)
-        segmented_imgs = torch.rand(8, 3, 128, 128)  # inputs are normalized from 0 to 1
-        input_imgs = torch.rand(8, 3, 128, 128)
 
         #print("Seg: {}".format(segmented_imgs.shape))
         #print("Inp: {}".format(input_imgs.shape))
@@ -83,8 +78,9 @@ def main():
 
 
     ## INFERENCE ##
-    pred = diffusion.sample(input_imgs)     # pass in your unsegmented images
-    pred.shape
+    pred = diffusion.sample(img)
+    #pred = diffusion.sample(input_imgs)     # pass in your unsegmented images
+    print("Pred: {}".format(pred.shape))
 
 
 
