@@ -38,7 +38,7 @@ class ISICDataset(Dataset):
         msk_path = os.path.join(self.data_path, 'ISBI2016_ISIC_Part3B_'+ self.mode +'_Data',mask_name)
 
         img = Image.open(img_path).convert('RGB')
-        mask = Image.open(msk_path).convert('L')
+        mask = Image.open(msk_path).convert('RGB')
 
         if self.mode == 'Training':
             label = 0 if self.label_list[index] == 'benign' else 1
