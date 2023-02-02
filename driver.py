@@ -60,7 +60,7 @@ def main():
     #args.in_ch = 4
 
 
-    datal = torch.utils.data.DataLoader(
+    training_generator = torch.utils.data.DataLoader(
         ds,
         batch_size=args.batch_size,
         shuffle=True)
@@ -71,39 +71,29 @@ def main():
         weight_decay=args.adam_weight_decay,
         eps=args.adam_epsilon,
     )
-    data = iter(datal)
+    #data = iter(datal)
+
+
     for _ in range(args.epochs):
-        for i in tqdm(range(len(data))):
-            img, mask = next(data)
+        for img, mask in training_generator:
 
-            ### SETUP DATA ##
-            #segmented_imgs = torch.rand(8, 3, 128, 128)  # inputs are normalized from 0 to 1
-            #input_imgs = torch.rand(8, 3, 128, 128)
-
-            #print("Seg: {}".format(segmented_imgs.shape))
-            #print("Inp: {}".format(input_imgs.shape))
-
-            #print("Img: {}".format(img.shape))
-            #print("Mask: {}".format(mask.shape))
-
-
-
+        #for i in tqdm(range(len(data)-1)):
+            #img, mask = next(data)
             ## TRAIN MODEL ##
-            #loss = diffusion(segmented_imgs, input_imgs)
             loss = diffusion(mask, img)
             wandb.log({'loss': loss}) # Log loss to wandb
             loss.backward()
             optimizer.step()
             optimizer.zero_grad()
-    # after a lot of training
 
 
     ## INFERENCE ##
     pred = diffusion.sample(img).cpu().detach().numpy()
     pil_img = numpy_to_pil(pred[0])
-    pil_img.save("output.png")
+    wandb.log({'pred': wandb.Image(pil_img)})
+    #pil_img.save("output.png")
     #pred = diffusion.sample(input_imgs)     # pass in your unsegmented images
-    print("Pred: {}".format(pred.shape))
+    #print("Pred: {}".format(pred.shape))
 
 
 
