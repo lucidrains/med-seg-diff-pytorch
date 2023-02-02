@@ -26,7 +26,7 @@ def main():
         "--adam_weight_decay", type=float, default=1e-6, help="Weight decay magnitude for the Adam optimizer."
     )
     parser.add_argument("--adam_epsilon", type=float, default=1e-08, help="Epsilon value for the Adam optimizer.")
-    parser.add_argument('-ic', '--input-channels', type=int, default=3, help='input channels for training (default: 3)')
+    parser.add_argument('-ic', '--input-channels', type=int, default=1, help='input channels for training (default: 3)')
     parser.add_argument('-c', '--channels', type=int, default=3, help='output channels for training (default: 3)')
     parser.add_argument('-is', '--image-size', type=int, default=128, help='input image size (default: 128)')
     parser.add_argument('-dd', '--data-dir', default='./data', help='directory of input image')
