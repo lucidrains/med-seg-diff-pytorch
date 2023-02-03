@@ -1,7 +1,10 @@
+import sys
+sys.path.append('./src/')
 import argparse
 import wandb
 import torch
-from train import Unet, MedSegDiff
+from unet import Unet
+from diffusion import MedSegDiff
 from loader_isic import ISICDataset
 import torchvision.transforms as transforms
 from tqdm import tqdm
@@ -58,7 +61,7 @@ def load_data(args):
 def main():
     ## DEFINE MODEL ##
     model = Unet(
-        dim = args.dim, #64,
+        dim = args.dim,
         image_size = args.image_size,
         dim_mults = (1, 2, 4, 8),
         input_channels = args.input_channels,
@@ -86,7 +89,6 @@ def main():
 
 
     ## TRAIN MODEL ##
-
     running_loss = 0.0
     counter = 0
 
@@ -94,8 +96,6 @@ def main():
     for epoch in range(args.epochs):
         print('Epoch {}/{}'.format(epoch+1, args.epochs))
         for ii, (img, mask) in tqdm(enumerate(data_loader), total=int(len(data_loader))):
-        #for bi, sample in enumerate(training_generator):
-            #img, mask = sample
             loss = diffusion(mask, img)
             wandb.log({'loss': loss}) # Log loss to wandb
             loss.backward()
@@ -103,7 +103,6 @@ def main():
             optimizer.zero_grad()
         running_loss += loss.item() * img.size(0)
         counter += 1
-        #training_generator.set_postfix(loss=(running_loss / (counter * data_loader.batch_size)))
         epoch_loss = running_loss / len(data_loader)
         print('Training Loss : {:.4f}'.format(epoch_loss))
 
@@ -113,14 +112,6 @@ def main():
     wandb.log({'pred': wandb.Image(pred)})
     wandb.log({'img': wandb.Image(img)})
     wandb.log({'mask': wandb.Image(mask)})
-'''
-    for bi_eval, sample_eval in enumerate(training_generator):
-        img_sample, mask_sample = sample_eval
-        pred_eval = diffusion.sample(img_sample).cpu().detach().numpy()
-        wandb.log({'pred_eval': wandb.Image(numpy_to_pil(pred_eval[0]))})
-        wandb.log({'img_eval': wandb.Image(img_sample)})
-        wandb.log({'mask_eval': wandb.Image(mask_sample)})
-'''
 
 
 
