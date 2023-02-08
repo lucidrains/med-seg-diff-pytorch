@@ -73,8 +73,8 @@ def main():
     )
     data = iter(datal)
     for _ in range(args.epochs):
-        for i in tqdm(range(len(data))):
-            img, mask = next(data)
+        for i, batch in tqdm(enumerate(data)):
+            img, mask = batch
 
             ### SETUP DATA ##
             #segmented_imgs = torch.rand(8, 3, 128, 128)  # inputs are normalized from 0 to 1
