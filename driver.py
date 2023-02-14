@@ -10,34 +10,34 @@ import torchvision.transforms as transforms
 from tqdm import tqdm
 import numpy as np
 import PIL
-
-
-
-## Initialize weights and biases project ##
-wandb.init(project="med-seg-diff")
+from accelerate import Accelerator
+import os
 
 ## Parse CLI arguments ##
-parser = argparse.ArgumentParser()
-parser.add_argument('-sc', '--self_condition', action='store_true', help='Whether to do self condition')
-parser.add_argument('-lr', '--learning_rate', type=float, default=5e-4, help='learning rate')
-parser.add_argument('-ab1', '--adam_beta1', type=float, default=0.95, help='The beta1 parameter for the Adam optimizer.')
-parser.add_argument('-ab2', '--adam_beta2', type=float, default=0.999, help='The beta2 parameter for the Adam optimizer.')
-parser.add_argument('-aw', '--adam_weight_decay', type=float, default=1e-6, help='Weight decay magnitude for the Adam optimizer.')
-parser.add_argument('-ae', '--adam_epsilon', type=float, default=1e-08, help='Epsilon value for the Adam optimizer.')
-parser.add_argument('-ic', '--input-channels', type=int, default=1, help='input channels for training (default: 3)')
-parser.add_argument('-c', '--channels', type=int, default=3, help='output channels for training (default: 3)')
-parser.add_argument('-is', '--image-size', type=int, default=128, help='input image size (default: 128)')
-parser.add_argument('-dd', '--data-dir', default='./data', help='directory of input image')
-parser.add_argument('-d', '--dim', type=int, default=64, help='dim (deaault: 64)')
-parser.add_argument('-e', '--epochs', type=int, default=10, help='number of epochs (default: 128)')
-parser.add_argument('-bs', '--batch-size', type=int, default=8, help='batch size to train on (default: 8)')
-parser.add_argument('-ds', '--dataset', default='ISIC', help='Dataset to use')
-args = parser.parse_args()
-wandb.config.update(args) # adds all of the arguments as config variables
-
-
-
-
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-rt', '--report_to', type=str, default="wandb", choices=["wandb"], help="Where to log to. Currently only supports wandb")
+    parser.add_argument('-ld', '--logging_dir', type=str, default="logs", help="Logging dir.")
+    parser.add_argument('-od', '--output_dir', type=str, default="output", help="Output dir.")
+    parser.add_argument('-mp', '--mixed_precision', type=str, default="no", choices=["no", "fp16", "bf16"], help="Whether to do mixed precision")
+    parser.add_argument('-ga', '--gradient_accumulation_steps', type=int, default=4, help="The number of gradient accumulation steps.")
+    parser.add_argument('-img', '--img_folder', type=str, default='ISBI2016_ISIC_Part3B_Training_Data', help='The image file path from data_path')
+    parser.add_argument('-csv', '--csv_file', type=str, default='ISBI2016_ISIC_Part3B_Training_GroundTruth.csv', help='The csv file to load in from data_path')
+    parser.add_argument('-sc', '--self_condition', action='store_true', help='Whether to do self condition')
+    parser.add_argument('-lr', '--learning_rate', type=float, default=5e-4, help='learning rate')
+    parser.add_argument('-ab1', '--adam_beta1', type=float, default=0.95, help='The beta1 parameter for the Adam optimizer.')
+    parser.add_argument('-ab2', '--adam_beta2', type=float, default=0.999, help='The beta2 parameter for the Adam optimizer.')
+    parser.add_argument('-aw', '--adam_weight_decay', type=float, default=1e-6, help='Weight decay magnitude for the Adam optimizer.')
+    parser.add_argument('-ae', '--adam_epsilon', type=float, default=1e-08, help='Epsilon value for the Adam optimizer.')
+    parser.add_argument('-ic', '--input-channels', type=int, default=1, help='input channels for training (default: 3)')
+    parser.add_argument('-c', '--channels', type=int, default=3, help='output channels for training (default: 3)')
+    parser.add_argument('-is', '--image-size', type=int, default=128, help='input image size (default: 128)')
+    parser.add_argument('-dd', '--data_path', default='./data', help='directory of input image')
+    parser.add_argument('-d', '--dim', type=int, default=64, help='dim (deaault: 64)')
+    parser.add_argument('-e', '--epochs', type=int, default=10, help='number of epochs (default: 128)')
+    parser.add_argument('-bs', '--batch-size', type=int, default=8, help='batch size to train on (default: 8)')
+    parser.add_argument('-ds', '--dataset', default='ISIC', help='Dataset to use')
+    return parser.parse_args()
 
 
 def load_data(args):
@@ -47,7 +47,9 @@ def load_data(args):
 
     # Load dataset
     if args.dataset == 'ISIC':
-        dataset = ISICDataset(args, args.data_dir, transform_train)
+        dataset = ISICDataset(args, args.data_path, transform_train)
+    else:
+        raise NotImplementedError(f"Your dataset {args.dataset} hasn't been implemented yet.")
 
     ## Define PyTorch data generator
     training_generator = torch.utils.data.DataLoader(
@@ -60,6 +62,15 @@ def load_data(args):
 
 
 def main():
+    logging_dir = os.path.join(args.output_dir, args.logging_dir)
+    accelerator = Accelerator(
+        gradient_accumulation_steps=args.gradient_accumulation_steps,
+        mixed_precision=args.mixed_precision,
+        log_with=args.report_to,
+        logging_dir=logging_dir,
+    )
+
+    args = parse_args()
     ## DEFINE MODEL ##
     model = Unet(
         dim = args.dim,
@@ -69,12 +80,6 @@ def main():
         channels = args.channels,
         self_condition = args.self_condition
     )
-
-    diffusion = MedSegDiff(
-        model,
-        timesteps = args.epochs
-    ).cuda()
-
 
     ## LOAD DATA ##
     data_loader = load_data(args)
@@ -93,23 +98,34 @@ def main():
     ## TRAIN MODEL ##
     running_loss = 0.0
     counter = 0
-
+    model, optimizer, data_loader = accelerator.prepare(
+        model, optimizer, data_loader
+    )
+    diffusion = MedSegDiff(
+        model,
+        timesteps = args.epochs
+    ).to(accelerator.device)
     ## Iterate across training loop
     for epoch in range(args.epochs):
         print('Epoch {}/{}'.format(epoch+1, args.epochs))
-        for ii, (img, mask) in tqdm(enumerate(data_loader), total=int(len(data_loader))):
-            loss = diffusion(mask, img)
-            wandb.log({'loss': loss}) # Log loss to wandb
-            loss.backward()
-            optimizer.step()
-            optimizer.zero_grad()
+        for (img, mask) in tqdm(data_loader):
+            with accelerator.accumulate(model):
+                loss = diffusion(mask, img)
+                accelerator.log({'loss': loss}) # Log loss to wandb
+                loss.backward()
+                optimizer.step()
+                optimizer.zero_grad()
         running_loss += loss.item() * img.size(0)
         counter += 1
         epoch_loss = running_loss / len(data_loader)
         print('Training Loss : {:.4f}'.format(epoch_loss))
         ## INFERENCE ##
-        pred = diffusion.sample(img).cpu()#.detach().numpy()
-        wandb.log({'pred-img-mask': [wandb.Image(pred), wandb.Image(img), wandb.Image(mask)]})
+        pred = diffusion.sample(img).cpu().detach().numpy()
+        for tracker in accelerator.trackers:
+            if tracker.name == "wandb":
+                tracker.log(
+                    {'pred-img-mask': [wandb.Image(pred), wandb.Image(img), wandb.Image(mask)]}
+                )
 
 
 if __name__ == '__main__':
