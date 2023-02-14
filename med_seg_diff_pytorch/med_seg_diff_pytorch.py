@@ -89,8 +89,6 @@ class SinusoidalPosEmb(nn.Module):
         emb = torch.cat((emb.sin(), emb.cos()), dim=-1)
         return emb
 
-# building block modules
-
 class Block(nn.Module):
     def __init__(self, dim, dim_out, groups = 8):
         super().__init__()
@@ -196,7 +194,6 @@ class Attention(nn.Module):
 
         out = rearrange(out, 'b h (x y) d -> b (h d) x y', x = h, y = w)
         return self.to_out(out)
-
 # conditioning class
 
 class Conditioning(nn.Module):
@@ -238,10 +235,12 @@ class Unet(nn.Module):
         self,
         dim,
         image_size,
+        input_channels,
+        channels,
         init_dim = None,
         out_dim = None,
         dim_mults: tuple = (1, 2, 4, 8),
-        channels = 3,
+        #channels = 3,
         full_self_attn: tuple = (False, False, False, True),
         self_condition = False,
         resnet_block_groups = 8,
@@ -255,8 +254,12 @@ class Unet(nn.Module):
         # determine dimensions
 
         self.channels = channels
+        self.input_channels = input_channels
         self.self_condition = self_condition
-        input_channels = channels * (2 if self_condition else 1)
+        output_channels = input_channels
+        input_channels = input_channels * (2 if self_condition else 1)
+        print("Channels: {}".format(channels))
+        print("In Channels: {}".format(input_channels))
 
         init_dim = default(init_dim, dim)
 
@@ -343,7 +346,7 @@ class Unet(nn.Module):
         # projection out to predictions
 
         self.final_res_block = block_klass(dim * 2, dim, time_emb_dim = time_dim)
-        self.final_conv = nn.Conv2d(dim, channels, 1)
+        self.final_conv = nn.Conv2d(dim, output_channels, 1)
 
     def forward(
         self,
@@ -357,7 +360,6 @@ class Unet(nn.Module):
         if self.self_condition:
             x_self_cond = default(x_self_cond, lambda: torch.zeros_like(x))
             x = torch.cat((x_self_cond, x), dim = 1)
-
         x = self.init_conv(x)
         r = x.clone()
 
@@ -412,31 +414,6 @@ class Unet(nn.Module):
         x = self.final_res_block(x, t)
         return self.final_conv(x)
 
-# gaussian diffusion trainer class
-
-def extract(a, t, x_shape):
-    b, *_ = t.shape
-    out = a.gather(-1, t)
-    return out.reshape(b, *((1,) * (len(x_shape) - 1)))
-
-def linear_beta_schedule(timesteps):
-    scale = 1000 / timesteps
-    beta_start = scale * 0.0001
-    beta_end = scale * 0.02
-    return torch.linspace(beta_start, beta_end, timesteps, dtype = torch.float64)
-
-def cosine_beta_schedule(timesteps, s = 0.008):
-    """
-    cosine schedule
-    as proposed in https://openreview.net/forum?id=-NEXDKk8gZ
-    """
-    steps = timesteps + 1
-    x = torch.linspace(0, timesteps, steps, dtype = torch.float64)
-    alphas_cumprod = torch.cos(((x / timesteps) + s) / (1 + s) * math.pi * 0.5) ** 2
-    alphas_cumprod = alphas_cumprod / alphas_cumprod[0]
-    betas = 1 - (alphas_cumprod[1:] / alphas_cumprod[:-1])
-    return torch.clip(betas, 0, 0.999)
-
 class MedSegDiff(nn.Module):
     def __init__(
         self,
@@ -452,6 +429,7 @@ class MedSegDiff(nn.Module):
 
         self.model = model
         self.channels = self.model.channels
+        self.input_channels = self.model.input_channels
         self.self_condition = self.model.self_condition
 
         self.image_size = model.image_size
@@ -646,9 +624,9 @@ class MedSegDiff(nn.Module):
         batch_size, device = cond_img.shape[0], self.device
         cond_img = cond_img.to(self.device)
 
-        image_size, channels = self.image_size, self.channels
+        image_size, input_channels = self.image_size, self.input_channels
         sample_fn = self.p_sample_loop if not self.is_ddim_sampling else self.ddim_sample
-        return sample_fn((batch_size, channels, image_size, image_size), cond_img)
+        return sample_fn((batch_size, input_channels, image_size, image_size), cond_img)
 
     def q_sample(self, x_start, t, noise=None):
         noise = default(noise, lambda: torch.randn_like(x_start))
@@ -673,11 +651,11 @@ class MedSegDiff(nn.Module):
         x_self_cond = None
         if self.self_condition and random() < 0.5:
             with torch.no_grad():
+                # predicting x_0
                 x_self_cond = self.model_predictions(x, t, cond).pred_x_start
                 x_self_cond.detach_()
 
         # predict and take gradient step
-
         model_out = self.model(x, t, cond, x_self_cond)
 
         if self.objective == 'pred_noise':
@@ -689,7 +667,6 @@ class MedSegDiff(nn.Module):
             target = v
         else:
             raise ValueError(f'unknown objective {self.objective}')
-
         return F.mse_loss(model_out, target)
 
     def forward(self, img, cond_img, *args, **kwargs):
