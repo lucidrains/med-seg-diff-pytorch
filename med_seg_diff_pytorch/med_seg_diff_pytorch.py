@@ -89,6 +89,8 @@ class SinusoidalPosEmb(nn.Module):
         emb = torch.cat((emb.sin(), emb.cos()), dim=-1)
         return emb
 
+# building block modules
+
 class Block(nn.Module):
     def __init__(self, dim, dim_out, groups = 8):
         super().__init__()
@@ -194,6 +196,7 @@ class Attention(nn.Module):
 
         out = rearrange(out, 'b h (x y) d -> b (h d) x y', x = h, y = w)
         return self.to_out(out)
+
 # conditioning class
 
 class Conditioning(nn.Module):
@@ -258,8 +261,6 @@ class Unet(nn.Module):
         self.self_condition = self_condition
         output_channels = input_channels
         input_channels = input_channels * (2 if self_condition else 1)
-        print("Channels: {}".format(channels))
-        print("In Channels: {}".format(input_channels))
 
         init_dim = default(init_dim, dim)
 
