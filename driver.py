@@ -1,7 +1,7 @@
 import argparse
 import wandb
 import torch
-from med_seg_diff_pytorch.med_seg_diff_pytorch import Unet, MedSegDiff
+from med_seg_diff_pytorch import Unet, MedSegDiff
 from med_seg_diff_pytorch.loader_isic import ISICDataset
 import torchvision.transforms as transforms
 from tqdm import tqdm
