@@ -44,8 +44,9 @@ pred.shape                              # predicted segmented images - (8, 3, 12
 
 Command to run
 ```bash
-$ accelerate launch driver.py --input-channels=3 --channels=1 --image-size=128 --data-dir='./data' --dim=64 --epochs=100 --batch-size=8
+accelerate launch driver.py --mask_channels=1 --input_img_channels=3 --image_size=64 --data_path='./data' --dim=64 --epochs=100 --batch_size=1 --scale_lr --gradient_accumulation_steps=4
 ```
+If you want to add in self condition where we condition with the mask we have so far, do --self_condition
 
 ## Appreciation
 

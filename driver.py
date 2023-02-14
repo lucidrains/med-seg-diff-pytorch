@@ -2,7 +2,7 @@ import argparse
 import wandb
 import torch
 from med_seg_diff_pytorch import Unet, MedSegDiff
-from med_seg_diff_pytorch.loader_isic import ISICDataset
+from med_seg_diff_pytorch.dataset import ISICDataset
 import torchvision.transforms as transforms
 from tqdm import tqdm
 from accelerate import Accelerator
@@ -11,6 +11,7 @@ import os
 ## Parse CLI arguments ##
 def parse_args():
     parser = argparse.ArgumentParser()
+    parser.add_argument('-slr', '--scale_lr', action='store_true', help="Whether to scale lr.")
     parser.add_argument('-rt', '--report_to', type=str, default="wandb", choices=["wandb"], help="Where to log to. Currently only supports wandb")
     parser.add_argument('-ld', '--logging_dir', type=str, default="logs", help="Logging dir.")
     parser.add_argument('-od', '--output_dir', type=str, default="output", help="Output dir.")
@@ -24,13 +25,13 @@ def parse_args():
     parser.add_argument('-ab2', '--adam_beta2', type=float, default=0.999, help='The beta2 parameter for the Adam optimizer.')
     parser.add_argument('-aw', '--adam_weight_decay', type=float, default=1e-6, help='Weight decay magnitude for the Adam optimizer.')
     parser.add_argument('-ae', '--adam_epsilon', type=float, default=1e-08, help='Epsilon value for the Adam optimizer.')
-    parser.add_argument('-ic', '--input-channels', type=int, default=1, help='input channels for training (default: 3)')
-    parser.add_argument('-c', '--channels', type=int, default=3, help='output channels for training (default: 3)')
-    parser.add_argument('-is', '--image-size', type=int, default=128, help='input image size (default: 128)')
+    parser.add_argument('-ic', '--mask_channels', type=int, default=1, help='input channels for training (default: 3)')
+    parser.add_argument('-c', '--input_img_channels', type=int, default=3, help='output channels for training (default: 3)')
+    parser.add_argument('-is', '--image_size', type=int, default=128, help='input image size (default: 128)')
     parser.add_argument('-dd', '--data_path', default='./data', help='directory of input image')
     parser.add_argument('-d', '--dim', type=int, default=64, help='dim (deaault: 64)')
     parser.add_argument('-e', '--epochs', type=int, default=10, help='number of epochs (default: 128)')
-    parser.add_argument('-bs', '--batch-size', type=int, default=8, help='batch size to train on (default: 8)')
+    parser.add_argument('-bs', '--batch_size', type=int, default=8, help='batch size to train on (default: 8)')
     parser.add_argument('-ds', '--dataset', default='ISIC', help='Dataset to use')
     return parser.parse_args()
 
@@ -42,7 +43,7 @@ def load_data(args):
 
     # Load dataset
     if args.dataset == 'ISIC':
-        dataset = ISICDataset(args, args.data_path, transform_train)
+        dataset = ISICDataset(args.data_path, args.csv_file, args.img_folder, transform = transform_train, training = True, flip_p=0.5)
     else:
         raise NotImplementedError(f"Your dataset {args.dataset} hasn't been implemented yet.")
 
@@ -57,6 +58,7 @@ def load_data(args):
 
 
 def main():
+    args = parse_args()
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
@@ -64,22 +66,26 @@ def main():
         log_with=args.report_to,
         logging_dir=logging_dir,
     )
+    if accelerator.is_main_process:
+        accelerator.init_trackers("med-seg-diff", config=vars(args))
 
-    args = parse_args()
     ## DEFINE MODEL ##
     model = Unet(
         dim = args.dim,
         image_size = args.image_size,
         dim_mults = (1, 2, 4, 8),
-        input_channels = args.input_channels,
-        channels = args.channels,
+        mask_channels = args.mask_channels,
+        input_img_channels= args.input_img_channels,
         self_condition = args.self_condition
     )
 
     ## LOAD DATA ##
     data_loader = load_data(args)
     #training_generator = tqdm(data_loader, total=int(len(data_loader)))
-
+    if args.scale_lr:
+        args.learning_rate = (
+            args.learning_rate * args.gradient_accumulation_steps * args.batch_size * accelerator.num_processes
+        )
     ## Initialize optimizer
     optimizer = torch.optim.AdamW(
         model.parameters(),

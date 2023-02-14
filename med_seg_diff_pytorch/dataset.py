@@ -8,7 +8,7 @@ import random
 import torchvision.transforms.functional as F
 class ISICDataset(Dataset):
     def __init__(self, data_path, csv_file, img_folder, transform = None, training = True, flip_p=0.5):
-        df = pd.read_csv(csv_file, encoding='gbk')
+        df = pd.read_csv(os.path.join(data_path, csv_file), encoding='gbk')
         self.img_folder = img_folder
         self.name_list = df.iloc[:,0].tolist()
         self.label_list = df.iloc[:,1].tolist()
