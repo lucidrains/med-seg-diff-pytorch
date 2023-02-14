@@ -1,10 +1,4 @@
 
-# My instructions
-Command to run
-```bash
-$ python3 driver.py --input-channels=3 --channels=1 --image-size=128 --data-dir='./data' --dim=64 --epochs=100 --batch-size=8
-```
-
 <img src="./docs/med-seg-diff.png" width="450px"></img>
 
 ## MedSegDiff - Pytorch
@@ -44,6 +38,13 @@ loss.backward()
 
 pred = diffusion.sample(input_imgs)     # pass in your unsegmented images
 pred.shape                              # predicted segmented images - (8, 3, 128, 128)
+```
+
+## Training
+
+Command to run
+```bash
+$ accelerate launch driver.py --input-channels=3 --channels=1 --image-size=128 --data-dir='./data' --dim=64 --epochs=100 --batch-size=8
 ```
 
 ## Appreciation

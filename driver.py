@@ -1,11 +1,10 @@
 import sys
-sys.path.append('./src/')
 import argparse
 import wandb
 import torch
-from unet import Unet
-from diffusion import MedSegDiff
-from loader_isic import ISICDataset
+from med_seg_diff_pytorch.unet import Unet
+from med_seg_diff_pytorch.diffusion import MedSegDiff
+from med_seg_diff_pytorch.loader_isic import ISICDataset
 import torchvision.transforms as transforms
 from tqdm import tqdm
 import numpy as np
