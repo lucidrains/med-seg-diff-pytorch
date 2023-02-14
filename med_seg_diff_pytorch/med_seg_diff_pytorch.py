@@ -674,11 +674,14 @@ class MedSegDiff(nn.Module):
         x_self_cond = None
         if self.self_condition and random() < 0.5:
             with torch.no_grad():
+
                 # predicting x_0
+
                 x_self_cond = self.model_predictions(x, t, cond).pred_x_start
                 x_self_cond.detach_()
 
         # predict and take gradient step
+
         model_out = self.model(x, t, cond, x_self_cond)
 
         if self.objective == 'pred_noise':
@@ -690,6 +693,7 @@ class MedSegDiff(nn.Module):
             target = v
         else:
             raise ValueError(f'unknown objective {self.objective}')
+        
         return F.mse_loss(model_out, target)
 
     def forward(self, img, cond_img, *args, **kwargs):
