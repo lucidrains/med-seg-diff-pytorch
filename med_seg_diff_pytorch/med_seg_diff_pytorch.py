@@ -360,7 +360,7 @@ class Unet(nn.Module):
         if self.self_condition:
             x_self_cond = default(x_self_cond, lambda: torch.zeros_like(x))
             x = torch.cat((x_self_cond, x), dim = 1)
-        
+
         x = self.init_conv(x)
         r = x.clone()
 
@@ -411,6 +411,7 @@ class Unet(nn.Module):
             x = upsample(x)
 
         x = torch.cat((x, r), dim = 1)
+
         x = self.final_res_block(x, t)
         return self.final_conv(x)
 

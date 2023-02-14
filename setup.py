@@ -21,7 +21,8 @@ setup(
     'einops',
     'torch',
     'tqdm',
-    'accelerate'
+    'accelerate',
+    'wandb'
   ],
   classifiers=[
     'Development Status :: 4 - Beta',
