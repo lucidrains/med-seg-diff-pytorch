@@ -20,7 +20,9 @@ setup(
     'beartype',
     'einops',
     'torch',
-    'tqdm'
+    'tqdm',
+    'accelerate',
+    'wandb'
   ],
   classifiers=[
     'Development Status :: 4 - Beta',

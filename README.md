@@ -1,4 +1,5 @@
-<img src="./med-seg-diff.png" width="450px"></img>
+
+<img src="./docs/med-seg-diff.png" width="450px"></img>
 
 ## MedSegDiff - Pytorch
 
@@ -38,6 +39,14 @@ loss.backward()
 pred = diffusion.sample(input_imgs)     # pass in your unsegmented images
 pred.shape                              # predicted segmented images - (8, 3, 128, 128)
 ```
+
+## Training
+
+Command to run
+```bash
+accelerate launch driver.py --mask_channels=1 --input_img_channels=3 --image_size=64 --data_path='./data' --dim=64 --epochs=100 --batch_size=1 --scale_lr --gradient_accumulation_steps=4
+```
+If you want to add in self condition where we condition with the mask we have so far, do --self_condition
 
 ## Appreciation
 

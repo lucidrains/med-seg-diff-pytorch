@@ -238,10 +238,11 @@ class Unet(nn.Module):
         self,
         dim,
         image_size,
+        mask_channels=1,
+        input_img_channels=3,
         init_dim = None,
         out_dim = None,
         dim_mults: tuple = (1, 2, 4, 8),
-        channels = 3,
         full_self_attn: tuple = (False, False, False, True),
         self_condition = False,
         resnet_block_groups = 8,
@@ -254,14 +255,15 @@ class Unet(nn.Module):
 
         # determine dimensions
 
-        self.channels = channels
+        self.input_img_channels = input_img_channels
+        self.mask_channels = mask_channels
         self.self_condition = self_condition
-        input_channels = channels * (2 if self_condition else 1)
+        output_channels = mask_channels
+        mask_channels = mask_channels * (2 if self_condition else 1)
 
         init_dim = default(init_dim, dim)
-
-        self.init_conv = nn.Conv2d(input_channels, init_dim, 7, padding = 3)
-        self.cond_init_conv = nn.Conv2d(channels, init_dim, 7, padding = 3)
+        self.init_conv = nn.Conv2d(mask_channels, init_dim, 7, padding = 3)
+        self.cond_init_conv = nn.Conv2d(input_img_channels, init_dim, 7, padding = 3)
 
         dims = [init_dim, *map(lambda m: dim * m, dim_mults)]
         in_out = list(zip(dims[:-1], dims[1:]))
@@ -343,7 +345,7 @@ class Unet(nn.Module):
         # projection out to predictions
 
         self.final_res_block = block_klass(dim * 2, dim, time_emb_dim = time_dim)
-        self.final_conv = nn.Conv2d(dim, channels, 1)
+        self.final_conv = nn.Conv2d(dim, output_channels, 1)
 
     def forward(
         self,
@@ -451,7 +453,8 @@ class MedSegDiff(nn.Module):
         super().__init__()
 
         self.model = model
-        self.channels = self.model.channels
+        self.input_img_channels = self.model.input_img_channels
+        self.mask_channels = self.model.mask_channels
         self.self_condition = self.model.self_condition
 
         self.image_size = model.image_size
@@ -646,9 +649,9 @@ class MedSegDiff(nn.Module):
         batch_size, device = cond_img.shape[0], self.device
         cond_img = cond_img.to(self.device)
 
-        image_size, channels = self.image_size, self.channels
+        image_size, mask_channels = self.image_size, self.mask_channels
         sample_fn = self.p_sample_loop if not self.is_ddim_sampling else self.ddim_sample
-        return sample_fn((batch_size, channels, image_size, image_size), cond_img)
+        return sample_fn((batch_size, mask_channels, image_size, image_size), cond_img)
 
     def q_sample(self, x_start, t, noise=None):
         noise = default(noise, lambda: torch.randn_like(x_start))
@@ -673,6 +676,9 @@ class MedSegDiff(nn.Module):
         x_self_cond = None
         if self.self_condition and random() < 0.5:
             with torch.no_grad():
+
+                # predicting x_0
+
                 x_self_cond = self.model_predictions(x, t, cond).pred_x_start
                 x_self_cond.detach_()
 
