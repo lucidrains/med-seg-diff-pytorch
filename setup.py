@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 setup(
   name = 'med-seg-diff-pytorch',
   packages = find_packages(exclude=[]),
-  version = '0.1.0',
+  version = '0.1.1',
   license='MIT',
   description = 'MedSegDiff - SOTA medical image segmentation - Pytorch',
   author = 'Phil Wang',
@@ -19,7 +19,9 @@ setup(
   install_requires=[
     'beartype',
     'einops',
+    'lion-pytorch',
     'torch',
+    'torchvision',
     'tqdm',
     'accelerate',
     'wandb'

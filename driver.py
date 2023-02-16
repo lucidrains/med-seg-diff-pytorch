@@ -1,12 +1,18 @@
+import os
 import argparse
-import wandb
+from tqdm import tqdm
+
 import torch
+import torchvision.transforms as transforms
+
+from torch.optim import AdamW
+from lion_pytorch import Lion
+
 from med_seg_diff_pytorch import Unet, MedSegDiff
 from med_seg_diff_pytorch.dataset import ISICDataset
-import torchvision.transforms as transforms
-from tqdm import tqdm
+
 from accelerate import Accelerator
-import os
+import wandb
 
 ## Parse CLI arguments ##
 def parse_args():
@@ -25,6 +31,7 @@ def parse_args():
     parser.add_argument('-ab2', '--adam_beta2', type=float, default=0.999, help='The beta2 parameter for the Adam optimizer.')
     parser.add_argument('-aw', '--adam_weight_decay', type=float, default=1e-6, help='Weight decay magnitude for the Adam optimizer.')
     parser.add_argument('-ae', '--adam_epsilon', type=float, default=1e-08, help='Epsilon value for the Adam optimizer.')
+    parser.add_argument('-ul', '--use_lion', type=bool, default=False, help='use Lion optimizer')
     parser.add_argument('-ic', '--mask_channels', type=int, default=1, help='input channels for training (default: 3)')
     parser.add_argument('-c', '--input_img_channels', type=int, default=3, help='output channels for training (default: 3)')
     parser.add_argument('-is', '--image_size', type=int, default=128, help='input image size (default: 128)')
@@ -86,15 +93,23 @@ def main():
         args.learning_rate = (
             args.learning_rate * args.gradient_accumulation_steps * args.batch_size * accelerator.num_processes
         )
-    ## Initialize optimizer
-    optimizer = torch.optim.AdamW(
-        model.parameters(),
-        lr=args.learning_rate,
-        betas=(args.adam_beta1, args.adam_beta2),
-        weight_decay=args.adam_weight_decay,
-        eps=args.adam_epsilon,
-    )
 
+    ## Initialize optimizer
+    if not args.use_lion:
+        optimizer = AdamW(
+            model.parameters(),
+            lr=args.learning_rate,
+            betas=(args.adam_beta1, args.adam_beta2),
+            weight_decay=args.adam_weight_decay,
+            eps=args.adam_epsilon,
+        )
+    else:
+        optimizer = Lion(
+            model.parameters(),
+            lr=args.learning_rate,
+            betas=(args.adam_beta1, args.adam_beta2),
+            weight_decay=args.adam_weight_decay
+        )
 
     ## TRAIN MODEL ##
     running_loss = 0.0
