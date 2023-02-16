@@ -5,6 +5,12 @@
 
 Implementation of <a href="https://arxiv.org/abs/2211.00611">MedSegDiff</a> in Pytorch - SOTA medical segmentation out of Baidu using DDPM and enhanced conditioning on the feature level, with filtering of features in fourier space.
 
+## Appreciation
+
+- <a href="https://stability.ai/">StabilityAI</a> for the generous sponsorship, as well as my other sponsors out there
+
+- <a href="https://github.com/isamu-isozaki">Isamu</a> and <a href="https://github.com/dsbuddy">Daniel</a> for adding a training script for a skin lesion dataset!
+
 ## Install
 
 ```bash
@@ -49,10 +55,6 @@ Command to run
 accelerate launch driver.py --mask_channels=1 --input_img_channels=3 --image_size=64 --data_path='./data' --dim=64 --epochs=100 --batch_size=1 --scale_lr --gradient_accumulation_steps=4
 ```
 If you want to add in self condition where we condition with the mask we have so far, do --self_condition
-
-## Appreciation
-
-- <a href="https://stability.ai/">StabilityAI</a> for the generous sponsorship, as well as my other sponsors out there
 
 ## Todo
 
