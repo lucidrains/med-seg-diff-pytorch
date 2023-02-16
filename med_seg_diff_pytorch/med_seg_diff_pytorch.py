@@ -138,6 +138,7 @@ class ResnetBlock(nn.Module):
 def FeedForward(dim, mult = 4):
     inner_dim = int(dim * mult)
     return nn.Sequential(
+        LayerNorm(dim),
         nn.Conv2d(dim, inner_dim, 1),
         nn.GELU(),
         nn.Conv2d(inner_dim, dim, 1),
