@@ -57,8 +57,8 @@ If you want to add in self condition where we condition with the mask we have so
 ## Todo
 
 - [x] some basic training code, with Trainer taking in custom dataset tailored for medical image formats  - thanks to <a href="https://github.com/isamu-isozaki">@isamu-isozaki</a>
+- [x] full blown transformer of any depth in the middle, as done in <a href="https://arxiv.org/abs/2301.11093">simple diffusion</a>
 
-- [ ] full blown transformer of any depth in the middle, as done in <a href="https://arxiv.org/abs/2301.11093">simple diffusion</a>
 
 ## Citations
 
@@ -69,5 +69,13 @@ If you want to add in self condition where we condition with the mask we have so
     journal = {ArXiv},
     year    = {2022},
     volume  = {abs/2211.00611}
+}
+```
+
+```bibtex
+@inproceedings{Hoogeboom2023simpleDE,
+    title   = {simple diffusion: End-to-end diffusion for high resolution images},
+    author  = {Emiel Hoogeboom and Jonathan Heek and Tim Salimans},
+    year    = {2023}
 }
 ```

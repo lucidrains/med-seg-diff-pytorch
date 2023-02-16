@@ -135,6 +135,14 @@ class ResnetBlock(nn.Module):
 
         return h + self.res_conv(x)
 
+def FeedForward(dim, mult = 4):
+    inner_dim = int(dim * mult)
+    return nn.Sequential(
+        nn.Conv2d(dim, inner_dim, 1),
+        nn.GELU(),
+        nn.Conv2d(inner_dim, dim, 1),
+    )
+
 class LinearAttention(nn.Module):
     def __init__(self, dim, heads = 4, dim_head = 32):
         super().__init__()
@@ -197,6 +205,28 @@ class Attention(nn.Module):
         out = rearrange(out, 'b h (x y) d -> b (h d) x y', x = h, y = w)
         return self.to_out(out)
 
+class Transformer(nn.Module):
+    def __init__(
+        self,
+        dim,
+        dim_head = 32,
+        heads = 4,
+        depth = 1
+    ):
+        super().__init__()
+        self.layers = nn.ModuleList([])
+        for _ in range(depth):
+            self.layers.append(nn.ModuleList([
+                Residual(Attention(dim, dim_head = dim_head, heads = heads)),
+                Residual(FeedForward(dim))
+            ]))
+
+    def forward(self, x):
+        for attn, ff in self.layers:
+            x = attn(x)
+            x = ff(x)
+        return x
+
 # conditioning class
 
 class Conditioning(nn.Module):
@@ -244,6 +274,9 @@ class Unet(nn.Module):
         out_dim = None,
         dim_mults: tuple = (1, 2, 4, 8),
         full_self_attn: tuple = (False, False, False, True),
+        attn_dim_head = 32,
+        attn_heads = 4,
+        mid_transformer_depth = 1,
         self_condition = False,
         resnet_block_groups = 8,
         conditioning_klass = Conditioning,
@@ -282,6 +315,13 @@ class Unet(nn.Module):
             nn.Linear(time_dim, time_dim)
         )
 
+        # attention related params
+
+        attn_kwargs = dict(
+            dim_head = attn_dim_head,
+            heads = attn_heads
+        )
+
         # layers
 
         num_resolutions = len(in_out)
@@ -307,7 +347,7 @@ class Unet(nn.Module):
             self.downs.append(nn.ModuleList([
                 block_klass(dim_in, dim_in, time_emb_dim = time_dim),
                 block_klass(dim_in, dim_in, time_emb_dim = time_dim),
-                Residual(attn_klass(dim_in)),
+                Residual(attn_klass(dim_in, **attn_kwargs)),
                 Downsample(dim_in, dim_out) if not is_last else nn.Conv2d(dim_in, dim_out, 3, padding = 1)
             ]))
 
@@ -318,7 +358,7 @@ class Unet(nn.Module):
 
         mid_dim = dims[-1]
         self.mid_block1 = block_klass(mid_dim, mid_dim, time_emb_dim = time_dim)
-        self.mid_attn = Residual(Attention(mid_dim))
+        self.mid_transformer = Transformer(mid_dim, depth = mid_transformer_depth, **attn_kwargs)
         self.mid_block2 = block_klass(mid_dim, mid_dim, time_emb_dim = time_dim)
 
         # condition encoding path will be the same as the main encoding path
@@ -339,7 +379,7 @@ class Unet(nn.Module):
             self.ups.append(nn.ModuleList([
                 block_klass(dim_out + skip_connect_dim, dim_out, time_emb_dim = time_dim),
                 block_klass(dim_out + skip_connect_dim, dim_out, time_emb_dim = time_dim),
-                Residual(attn_klass(dim_out)),
+                Residual(attn_klass(dim_out, **attn_kwargs)),
                 Upsample(dim_out, dim_in) if not is_last else  nn.Conv2d(dim_out, dim_in, 3, padding = 1)
             ]))
 
@@ -397,7 +437,7 @@ class Unet(nn.Module):
 
         x = x + c  # seems like they summed the encoded condition to the encoded input representation
 
-        x = self.mid_attn(x)
+        x = self.mid_transformer(x)
         x = self.mid_block2(x, t)
 
         for block1, block2, attn, upsample in self.ups:
