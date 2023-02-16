@@ -54,7 +54,7 @@ If you want to add in self condition where we condition with the mask we have so
 
 ## Todo
 
-- [ ] some basic training code, with Trainer taking in custom dataset tailored for medical image formats
+- [x] some basic training code, with Trainer taking in custom dataset tailored for medical image formats  - thanks to <a href="https://github.com/isamu-isozaki">@isamu-isozaki</a>
 
 ## Citations
 
