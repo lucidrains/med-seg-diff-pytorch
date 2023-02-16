@@ -20,6 +20,8 @@ from med_seg_diff_pytorch import Unet, MedSegDiff
 model = Unet(
     dim = 64,
     image_size = 128,
+    mask_channels = 1,          # segmentation has 1 channel
+    input_img_channels = 3,     # input images have 3 channels
     dim_mults = (1, 2, 4, 8)
 )
 
@@ -28,7 +30,7 @@ diffusion = MedSegDiff(
     timesteps = 1000
 ).cuda()
 
-segmented_imgs = torch.rand(8, 3, 128, 128)  # inputs are normalized from 0 to 1
+segmented_imgs = torch.rand(8, 1, 128, 128)  # inputs are normalized from 0 to 1
 input_imgs = torch.rand(8, 3, 128, 128)
 
 loss = diffusion(segmented_imgs, input_imgs)
@@ -55,6 +57,8 @@ If you want to add in self condition where we condition with the mask we have so
 ## Todo
 
 - [x] some basic training code, with Trainer taking in custom dataset tailored for medical image formats  - thanks to <a href="https://github.com/isamu-isozaki">@isamu-isozaki</a>
+
+- [ ] full blown transformer of any depth in the middle, as done in <a href="https://arxiv.org/abs/2301.11093">simple diffusion</a>
 
 ## Citations
 

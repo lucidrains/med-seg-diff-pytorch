@@ -238,8 +238,8 @@ class Unet(nn.Module):
         self,
         dim,
         image_size,
-        mask_channels=1,
-        input_img_channels=3,
+        mask_channels = 1,
+        input_img_channels = 3,
         init_dim = None,
         out_dim = None,
         dim_mults: tuple = (1, 2, 4, 8),
@@ -258,6 +258,7 @@ class Unet(nn.Module):
         self.input_img_channels = input_img_channels
         self.mask_channels = mask_channels
         self.self_condition = self_condition
+
         output_channels = mask_channels
         mask_channels = mask_channels * (2 if self_condition else 1)
 
@@ -699,11 +700,21 @@ class MedSegDiff(nn.Module):
         return F.mse_loss(model_out, target)
 
     def forward(self, img, cond_img, *args, **kwargs):
+        if img.ndim == 3:
+            img = rearrange(img, 'b h w -> b 1 h w')
+
+        if cond_img.ndim == 3:
+            cond_img = rearrange(cond_img, 'b h w -> b 1 h w')
+
         device = self.device
         img, cond_img = img.to(device), cond_img.to(device)
 
-        b, c, h, w, device, img_size, = *img.shape, img.device, self.image_size
+        b, c, h, w, device, img_size, img_channels, mask_channels = *img.shape, img.device, self.image_size, self.input_img_channels, self.mask_channels
+
         assert h == img_size and w == img_size, f'height and width of image must be {img_size}'
+        assert cond_img.shape[1] == img_channels, f'your input medical must have {img_channels} channels'
+        assert img.shape[1] == mask_channels, f'the segmented image must have {mask_channels} channels'
+
         times = torch.randint(0, self.num_timesteps, (b,), device = device).long()
 
         img = normalize_to_neg_one_to_one(img)
