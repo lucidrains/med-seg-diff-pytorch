@@ -66,11 +66,11 @@ class GenericNpyDataset(torch.utils.data.Dataset):
         self.directory = os.path.expanduser(directory)
         self.transform = transform
         self.test_flag = test_flag
-        self.filenames = [os.path.join(self.directory, x) for x in os.listdir(self.directory) if x.endswith('.npy')]
+        self.filenames = [x for x in os.listdir(self.directory) if x.endswith('.npy')]
 
     def __getitem__(self, x: int):
         fname = self.filenames[x]
-        npy_img = np.load(fname)
+        npy_img = np.load(os.path.join(self.directory, fname))
         img = npy_img[:, :, :1]
         img = torch.from_numpy(img).permute(2, 0, 1)
         mask = npy_img[:, :, 1:]
@@ -84,7 +84,8 @@ class GenericNpyDataset(torch.utils.data.Dataset):
             image = self.transform(image)
             torch.set_rng_state(state)
             mask = self.transform(mask)
-
+        if self.test_flag:
+            return image, mask, fname
         return image, mask
 
     def __len__(self) -> int:
