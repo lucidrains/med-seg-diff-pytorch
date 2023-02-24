@@ -48,7 +48,7 @@ def parse_args():
     parser.add_argument('-bs', '--batch_size', type=int, default=8, help='batch size to train on (default: 8)')
     parser.add_argument('--timesteps', type=int, default=1000, help='number of timesteps (default: 1000)')
     parser.add_argument('-ds', '--dataset', default='generic', help='Dataset to use')
-    parser.add_argument('--save_every', type=int, default=100, help='save_every n rpochs (default: 100)')
+    parser.add_argument('--save_every', type=int, default=100, help='save_every n epochs (default: 100)')
     parser.add_argument('--load_model_from', default=None, help='path to pt file to load from')
     return parser.parse_args()
 
