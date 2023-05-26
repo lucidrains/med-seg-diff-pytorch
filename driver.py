@@ -148,11 +148,11 @@ def main():
         for (img, mask) in tqdm(data_loader):
             with accelerator.accumulate(model):
                 loss = diffusion(mask, img)
+                running_loss += loss.item() * img.size(0)
                 accelerator.log({'loss': loss})  # Log loss to wandb
                 accelerator.backward(loss)
                 optimizer.step()
                 optimizer.zero_grad()
-        running_loss += loss.item() * img.size(0)
         counter += 1
         epoch_loss = running_loss / len(data_loader)
         print('Training Loss : {:.4f}'.format(epoch_loss))
