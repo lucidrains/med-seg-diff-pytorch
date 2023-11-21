@@ -307,8 +307,9 @@ class Conditioning(Module):
         if dynamic:
             self.to_dynamic_ff_parser_attn_map = ViT(
                 dim = dim,
-                channels = dim * 2,
+                channels = dim * 2 * 2,  # both input and condition, and account for complex (real and imag components)
                 channels_out = dim,
+                image_size = image_size,
                 patch_size = patch_size,
                 heads = heads,
                 dim_head = dim_head
@@ -328,9 +329,14 @@ class Conditioning(Module):
         x = fft2(x)
 
         if self.dynamic:
-            x_real = torch.view_as_real(x)
-            x_real = rearrange(x_real, 'b d h w ri -> b (d ri) h w')
-            dynamic_ff_parser_attn_map = self.to_dynamic_ff_parser_attn_map(x_real)
+            c_complex = fft2(c)
+            x_as_real, c_as_real = map(torch.view_as_real, (x, c_complex))
+            x_as_real, c_as_real = map(lambda t: rearrange(t, 'b d h w ri -> b (d ri) h w'), (x_as_real, c_as_real))
+
+            to_dynamic_input = torch.cat((x_as_real, c_as_real), dim = 1)
+
+            dynamic_ff_parser_attn_map = self.to_dynamic_ff_parser_attn_map(to_dynamic_input)
+
             ff_parser_attn_map = ff_parser_attn_map + dynamic_ff_parser_attn_map
 
         x = x * ff_parser_attn_map
@@ -423,7 +429,6 @@ class Unet(Module):
         if conditioning_klass == Conditioning:
             conditioning_klass = partial(
                 Conditioning,
-                image_size = image_size,
                 dynamic = dynamic_ff_parser_attn_map,
                 **conditioning_kwargs
             )
@@ -447,8 +452,7 @@ class Unet(Module):
             is_last = ind >= (num_resolutions - 1)
             attn_klass = Attention if full_attn else LinearAttention
 
-            self.conditioners.append(conditioning_klass(curr_fmap_size, dim_in))
-
+            self.conditioners.append(conditioning_klass(curr_fmap_size, dim_in, image_size = curr_fmap_size))
 
             self.downs.append(ModuleList([
                 block_klass(dim_in, dim_in, time_emb_dim = time_dim),
