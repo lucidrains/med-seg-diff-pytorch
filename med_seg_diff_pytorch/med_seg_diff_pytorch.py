@@ -8,6 +8,7 @@ from beartype import beartype
 
 import torch
 from torch import nn, einsum
+from torch.nn import Module, ModuleList
 import torch.nn.functional as F
 from torch.fft import fft2, ifft2
 
@@ -43,7 +44,7 @@ def unnormalize_to_zero_to_one(t):
 
 # small helper modules
 
-class Residual(nn.Module):
+class Residual(Module):
     def __init__(self, fn):
         super().__init__()
         self.fn = fn
@@ -63,7 +64,7 @@ def Downsample(dim, dim_out = None):
         nn.Conv2d(dim * 4, default(dim_out, dim), 1)
     )
 
-class LayerNorm(nn.Module):
+class LayerNorm(Module):
     def __init__(self, dim, bias = False):
         super().__init__()
         self.g = nn.Parameter(torch.ones(1, dim, 1, 1))
@@ -75,7 +76,7 @@ class LayerNorm(nn.Module):
         mean = torch.mean(x, dim = 1, keepdim = True)
         return (x - mean) * (var + eps).rsqrt() * self.g + default(self.b, 0)
 
-class SinusoidalPosEmb(nn.Module):
+class SinusoidalPosEmb(Module):
     def __init__(self, dim):
         super().__init__()
         self.dim = dim
@@ -91,7 +92,7 @@ class SinusoidalPosEmb(nn.Module):
 
 # building block modules
 
-class Block(nn.Module):
+class Block(Module):
     def __init__(self, dim, dim_out, groups = 8):
         super().__init__()
         self.proj = nn.Conv2d(dim, dim_out, 3, padding = 1)
@@ -109,7 +110,7 @@ class Block(nn.Module):
         x = self.act(x)
         return x
 
-class ResnetBlock(nn.Module):
+class ResnetBlock(Module):
     def __init__(self, dim, dim_out, *, time_emb_dim = None, groups = 8):
         super().__init__()
         self.mlp = nn.Sequential(
@@ -144,7 +145,7 @@ def FeedForward(dim, mult = 4):
         nn.Conv2d(inner_dim, dim, 1),
     )
 
-class LinearAttention(nn.Module):
+class LinearAttention(Module):
     def __init__(self, dim, heads = 4, dim_head = 32):
         super().__init__()
         self.scale = dim_head ** -0.5
@@ -178,7 +179,7 @@ class LinearAttention(nn.Module):
         out = rearrange(out, 'b h c (x y) -> b (h c) x y', h = self.heads, x = h, y = w)
         return self.to_out(out)
 
-class Attention(nn.Module):
+class Attention(Module):
     def __init__(self, dim, heads = 4, dim_head = 32):
         super().__init__()
         self.scale = dim_head ** -0.5
@@ -206,7 +207,7 @@ class Attention(nn.Module):
         out = rearrange(out, 'b h (x y) d -> b (h d) x y', x = h, y = w)
         return self.to_out(out)
 
-class Transformer(nn.Module):
+class Transformer(Module):
     def __init__(
         self,
         dim,
@@ -215,9 +216,9 @@ class Transformer(nn.Module):
         depth = 1
     ):
         super().__init__()
-        self.layers = nn.ModuleList([])
+        self.layers = ModuleList([])
         for _ in range(depth):
-            self.layers.append(nn.ModuleList([
+            self.layers.append(ModuleList([
                 Residual(Attention(dim, dim_head = dim_head, heads = heads)),
                 Residual(FeedForward(dim))
             ]))
@@ -228,12 +229,79 @@ class Transformer(nn.Module):
             x = ff(x)
         return x
 
+# vision transformer for dynamic ff-parser
+
+class ViT(Module):
+    def __init__(
+        self,
+        dim,
+        *,
+        patch_size,
+        channels = 3,
+        channels_out = None,
+        dim_head = 32,
+        heads = 4,
+        depth = 4,
+    ):
+        super().__init__()
+        channels_out = default(channels_out, channels)
+
+        patch_dim = channels * (patch_size ** 2)
+        output_patch_dim = channels_out * (patch_size ** 2)
+
+        self.to_tokens = nn.Sequential(
+            Rearrange('b c (h p1) (w p2) -> b (c p1 p2) h w', p1 = patch_size, p2 = patch_size),
+            nn.Conv2d(patch_dim, dim, 1),
+            LayerNorm(dim)
+        )
+
+        self.transformer = Transformer(
+            dim = dim,
+            dim_head = dim_head,
+            depth = depth
+        )
+
+        self.to_patches = nn.Sequential(
+            LayerNorm(dim),
+            nn.Conv2d(dim, output_patch_dim, 1),
+            Rearrange('b (c p1 p2) h w -> b c (h p1) (w p2)', p1 = patch_size, p2 = patch_size),
+        )
+
+        nn.init.zeros_(self.to_patches[-2].weight)
+        nn.init.zeros_(self.to_patches[-2].bias)
+
+    def forward(self, x):
+        x = self.to_tokens(x)
+        x = self.transformer(x)
+        return self.to_patches(x)
+
 # conditioning class
 
-class Conditioning(nn.Module):
-    def __init__(self, fmap_size, dim):
+class Conditioning(Module):
+    def __init__(
+        self,
+        fmap_size,
+        dim,
+        dynamic = True,
+        dim_head = 32,
+        heads = 4,
+        depth = 4,
+        patch_size = 16
+    ):
         super().__init__()
         self.ff_parser_attn_map = nn.Parameter(torch.ones(dim, fmap_size, fmap_size))
+
+        self.dynamic = dynamic
+
+        if dynamic:
+            self.to_dynamic_ff_parser_attn_map = ViT(
+                dim = dim,
+                channels = dim * 2,
+                channels_out = dim,
+                patch_size = patch_size,
+                heads = heads,
+                dim_head = dim_head
+            )
 
         self.norm_input = LayerNorm(dim, bias = True)
         self.norm_condition = LayerNorm(dim, bias = True)
@@ -241,12 +309,21 @@ class Conditioning(nn.Module):
         self.block = ResnetBlock(dim, dim)
 
     def forward(self, x, c):
+        ff_parser_attn_map = self.ff_parser_attn_map
 
         # ff-parser in the paper, for modulating out the high frequencies
 
         dtype = x.dtype
         x = fft2(x)
-        x = x * self.ff_parser_attn_map
+
+        if self.dynamic:
+            x_real = torch.view_as_real(x)
+            x_real = rearrange(x_real, 'b d h w ri -> b (d ri) h w')
+            dynamic_ff_parser_attn_map = self.to_dynamic_ff_parser_attn_map(x_real)
+            ff_parser_attn_map = ff_parser_attn_map + dynamic_ff_parser_attn_map
+
+        x = x * ff_parser_attn_map
+
         x = ifft2(x).real
         x = x.type(dtype)
 
@@ -264,7 +341,7 @@ class Conditioning(nn.Module):
 # model
 
 @beartype
-class Unet(nn.Module):
+class Unet(Module):
     def __init__(
         self,
         dim,
@@ -281,7 +358,14 @@ class Unet(nn.Module):
         self_condition = False,
         resnet_block_groups = 8,
         conditioning_klass = Conditioning,
-        skip_connect_condition_fmaps = False   # whether to concatenate the conditioning fmaps in the latter decoder upsampling portion of unet
+        skip_connect_condition_fmaps = False,    # whether to concatenate the conditioning fmaps in the latter decoder upsampling portion of unet
+        dynamic_ff_parser_attn_map = False,      # allow for ff-parser to be dynamic based on the input. will exclude condition for now
+        conditioning_kwargs: dict = dict(
+            dim_head = 32,
+            heads = 4,
+            depth = 4,
+            patch_size = 16
+        )
     ):
         super().__init__()
 
@@ -323,18 +407,27 @@ class Unet(nn.Module):
             heads = attn_heads
         )
 
+        # conditioner settings
+
+        if conditioning_klass == Conditioning:
+            conditioning_klass = partial(
+                Conditioning,
+                dynamic = dynamic_ff_parser_attn_map,
+                **conditioning_kwargs
+            )
+
         # layers
 
         num_resolutions = len(in_out)
         assert len(full_self_attn) == num_resolutions
 
-        self.conditioners = nn.ModuleList([])
+        self.conditioners = ModuleList([])
 
         self.skip_connect_condition_fmaps = skip_connect_condition_fmaps
 
         # downsampling encoding blocks
 
-        self.downs = nn.ModuleList([])
+        self.downs = ModuleList([])
 
         curr_fmap_size = image_size
 
@@ -345,7 +438,7 @@ class Unet(nn.Module):
             self.conditioners.append(conditioning_klass(curr_fmap_size, dim_in))
 
 
-            self.downs.append(nn.ModuleList([
+            self.downs.append(ModuleList([
                 block_klass(dim_in, dim_in, time_emb_dim = time_dim),
                 block_klass(dim_in, dim_in, time_emb_dim = time_dim),
                 Residual(attn_klass(dim_in, **attn_kwargs)),
@@ -369,7 +462,7 @@ class Unet(nn.Module):
 
         # upsampling decoding blocks
 
-        self.ups = nn.ModuleList([])
+        self.ups = ModuleList([])
 
         for ind, ((dim_in, dim_out), full_attn) in enumerate(zip(reversed(in_out), reversed(full_self_attn))):
             is_last = ind == (len(in_out) - 1)
@@ -377,7 +470,7 @@ class Unet(nn.Module):
 
             skip_connect_dim = dim_in * (2 if self.skip_connect_condition_fmaps else 1)
 
-            self.ups.append(nn.ModuleList([
+            self.ups.append(ModuleList([
                 block_klass(dim_out + skip_connect_dim, dim_out, time_emb_dim = time_dim),
                 block_klass(dim_out + skip_connect_dim, dim_out, time_emb_dim = time_dim),
                 Residual(attn_klass(dim_out, **attn_kwargs)),
@@ -481,7 +574,7 @@ def cosine_beta_schedule(timesteps, s = 0.008):
     betas = 1 - (alphas_cumprod[1:] / alphas_cumprod[:-1])
     return torch.clip(betas, 0, 0.999)
 
-class MedSegDiff(nn.Module):
+class MedSegDiff(Module):
     def __init__(
         self,
         model,
