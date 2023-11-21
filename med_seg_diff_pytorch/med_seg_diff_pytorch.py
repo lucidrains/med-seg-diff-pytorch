@@ -236,6 +236,7 @@ class ViT(Module):
         self,
         dim,
         *,
+        image_size,
         patch_size,
         channels = 3,
         channels_out = None,
@@ -244,6 +245,13 @@ class ViT(Module):
         depth = 4,
     ):
         super().__init__()
+        assert exists(image_size)
+        assert (image_size % patch_size) == 0
+
+        num_patches_height_width = image_size // patch_size
+
+        self.pos_emb = nn.Parameter(torch.zeros(dim, num_patches_height_width, num_patches_height_width))
+
         channels_out = default(channels_out, channels)
 
         patch_dim = channels * (patch_size ** 2)
@@ -272,6 +280,8 @@ class ViT(Module):
 
     def forward(self, x):
         x = self.to_tokens(x)
+        x = x + self.pos_emb
+
         x = self.transformer(x)
         return self.to_patches(x)
 
@@ -283,6 +293,7 @@ class Conditioning(Module):
         fmap_size,
         dim,
         dynamic = True,
+        image_size = None,
         dim_head = 32,
         heads = 4,
         depth = 4,
@@ -412,6 +423,7 @@ class Unet(Module):
         if conditioning_klass == Conditioning:
             conditioning_klass = partial(
                 Conditioning,
+                image_size = image_size,
                 dynamic = dynamic_ff_parser_attn_map,
                 **conditioning_kwargs
             )
